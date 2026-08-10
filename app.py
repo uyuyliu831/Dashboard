@@ -40,7 +40,7 @@ def build_display_table(snapshot_table: pd.DataFrame) -> pd.DataFrame:
     flat_columns = []
     for col in table.columns:
         if isinstance(col, tuple):
-            flat_columns.append(f"{col[0]}-{col[1]}")
+            flat_columns.append(str(col[1]))
         else:
             flat_columns.append(str(col))
     table.columns = flat_columns
@@ -60,24 +60,25 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame, difference_mode: boo
     group_map = {
         "资产名称": "",
         "资产分类": "",
-        "短期趋势-1个月": "短期趋势",
-        "短期趋势-3个月": "短期趋势",
-        "短期趋势-6个月": "短期趋势",
-        "长期反转-6个月": "长期反转",
-        "长期反转-1年": "长期反转",
-        "长期反转-2年": "长期反转",
-        "波动-短期波动率": "波动",
-        "波动-中期波动率": "波动",
+        "短期趋势-1个月": "资产趋势",
+        "中期趋势-6个月": "资产趋势",
+        "长期趋势-一年": "资产趋势",
+        "短期偏度-6个月": "偏度反转",
+        "中期偏度-一年": "偏度反转",
+        "长期偏度-两年": "偏度反转",
+        "短期波动-1个月": "波动",
+        "中期波动-3个月": "波动",
+        "长期波动-6个月": "波动",
     }
 
-    group_spans = [("资产信息", 2), ("短期趋势", 3), ("长期反转", 3), ("波动", 2)]
+    group_spans = [("资产信息", 2), ("资产趋势", 3), ("偏度反转", 3), ("波动", 3)]
     top_header = "".join(
         f'<th class="group-header" colspan="{span}">{label}</th>' for label, span in group_spans
     )
 
     second_header = []
     for idx, col in enumerate(columns):
-        is_numeric = pd.api.types.is_numeric_dtype(snapshot_table[col])
+        is_numeric = pd.api.types.is_numeric_dtype(snapshot_table.iloc[:, idx])
         align_class = "text-left" if col in ("资产名称", "资产分类") else "text-center"
         second_header.append(
             f'<th class="sub-header {align_class} sortable" '
@@ -89,8 +90,8 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame, difference_mode: boo
     body_rows = []
     for _, row in snapshot_table.iterrows():
         cells = []
-        for col in columns:
-            value = row[col]
+        for idx, col in enumerate(columns):
+            value = row.iloc[idx]
             group = group_map.get(col)
             style = heatmap_style(value, group=group, difference_mode=difference_mode)
             align_class = "text-left" if col in ("资产名称", "资产分类") else "text-center"
@@ -213,6 +214,7 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame, difference_mode: boo
                     <col class="signal-col" />
                     <col class="signal-col" />
                     <col class="signal-col" />
+                    <col class="signal-col" />
                 </colgroup>
                 <thead>
                     <tr>{top_header}</tr>
@@ -295,8 +297,8 @@ def render_snapshot_block(result, title: str, description: str, difference_mode:
         <div class="info-card">
             <div class="info-card-title">信号说明</div>
             <div class="info-card-body">
-                <div><b>短期趋势</b>：<code>1</code> 偏多，<code>-1</code> 偏空</div>
-                <div><b>长期反转</b>：<code>1</code> 更偏抄底，<code>-1</code> 更偏回落</div>
+                <div><b>资产趋势</b>：<code>1</code> 偏多，<code>-1</code> 偏空</div>
+                <div><b>偏度反转</b>：基于历史收益偏度，<code>1</code> 偏负偏度，<code>-1</code> 偏正偏度</div>
                 <div><b>波动</b>：常规看板中 <code>0</code> 低波动、<code>1</code> 高波动；差值看板中为两日期之差</div>
             </div>
         </div>

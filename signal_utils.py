@@ -80,11 +80,12 @@ ASSET_CATEGORY_MAP: Dict[str, str] = {
 }
 
 ASSET_CODES = list(ASSET_NAME_MAP.keys())
-MOMCO_WINDOWS = {"1个月": 21, "3个月": 63, "6个月": 126}
-SKNS_WINDOWS = {"6个月": 126, "1年": 252, "2年": 504}
+MOMCO_WINDOWS = {"短期趋势-1个月": 21, "中期趋势-6个月": 126, "长期趋势-一年": 252}
+SKNS_WINDOWS = {"短期偏度-6个月": 126, "中期偏度-一年": 252, "长期偏度-两年": 504}
 VOL_CONFIG = {
-    "短期波动率": (21, 252),
-    "中期波动率": (63, 504),
+    "短期波动-1个月": (21, 252),
+    "中期波动-3个月": (63, 504),
+    "长期波动-6个月": (126, 504),
 }
 
 
@@ -231,11 +232,11 @@ def compute_snapshot(
 
     for label, slow_window in MOMCO_WINDOWS.items():
         signal = prices.apply(lambda col: momco(col, fast=5, slow=slow_window, window=slow_window))
-        table_parts[("短期趋势", label)] = scale_minus1_to_1(signal.loc[snapshot_date], cap=2.0)
+        table_parts[("资产趋势", label)] = scale_minus1_to_1(signal.loc[snapshot_date], cap=2.0)
 
     for label, window in SKNS_WINDOWS.items():
         raw_signal = -log_returns.loc[:snapshot_date].apply(lambda col: reg_skewness(col.tail(window)))
-        table_parts[("长期反转", label)] = scale_minus1_to_1(raw_signal, cap=3.0)
+        table_parts[("偏度反转", label)] = scale_minus1_to_1(raw_signal, cap=3.0)
 
     for label, (vol_window, z_window) in VOL_CONFIG.items():
         rolling_vol = simple_returns.rolling(vol_window).std()
@@ -255,6 +256,8 @@ def _blend_color(start: tuple[int, int, int], end: tuple[int, int, int], weight:
 
 
 def heatmap_style(value: object, group: str | None = None, difference_mode: bool = False) -> str:
+    if isinstance(value, (pd.Series, np.ndarray, list, tuple)):
+        return ""
     if isinstance(value, str) or pd.isna(value):
         return ""
 
@@ -264,12 +267,12 @@ def heatmap_style(value: object, group: str | None = None, difference_mode: bool
     blue = (157, 184, 232)
 
     if difference_mode:
-        caps = {"短期趋势": 2.0, "长期反转": 2.0, "波动": 1.0}
+        caps = {"资产趋势": 2.0, "偏度反转": 2.0, "波动": 1.0}
         cap = caps.get(group)
         if cap is None:
             return ""
         normalized = float(np.clip((numeric / cap + 1) / 2, 0, 1))
-    elif group in ("短期趋势", "长期反转"):
+    elif group in ("资产趋势", "偏度反转"):
         normalized = float(np.clip((numeric + 1) / 2, 0, 1))
     elif group == "波动":
         normalized = float(np.clip(numeric, 0, 1))
