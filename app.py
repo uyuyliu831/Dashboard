@@ -12,6 +12,7 @@ from signal_utils import (
     ASSET_GROUPS,
     compute_snapshot,
     fetch_price_history,
+    get_available_snapshot_dates,
     heatmap_style,
 )
 
@@ -20,9 +21,8 @@ st.set_page_config(page_title=APP_NAME, layout="wide")
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_snapshot():
-    raw_df = fetch_price_history()
-    return compute_snapshot(raw_df)
+def get_price_history_data() -> pd.DataFrame:
+    return fetch_price_history()
 
 
 def ordered_categories() -> list[str]:
@@ -55,7 +55,7 @@ def format_value(value) -> str:
     return f"{float(value):.2f}"
 
 
-def build_sortable_html_table(snapshot_table: pd.DataFrame) -> str:
+def build_sortable_html_table(snapshot_table: pd.DataFrame, difference_mode: bool = False) -> str:
     columns = list(snapshot_table.columns)
     group_map = {
         "资产名称": "",
@@ -71,7 +71,6 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame) -> str:
     }
 
     group_spans = [("资产信息", 2), ("趋势", 3), ("反转", 3), ("波动", 2)]
-
     top_header = "".join(
         f'<th class="group-header" colspan="{span}">{label}</th>' for label, span in group_spans
     )
@@ -80,9 +79,8 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame) -> str:
     for idx, col in enumerate(columns):
         is_numeric = pd.api.types.is_numeric_dtype(snapshot_table[col])
         align_class = "text-left" if col in ("资产名称", "资产分类") else "text-center"
-        sort_class = "sortable" if True else ""
         second_header.append(
-            f'<th class="sub-header {align_class} {sort_class}" '
+            f'<th class="sub-header {align_class} sortable" '
             f'data-col="{idx}" data-type="{"number" if is_numeric else "text"}">'
             f'{html.escape(col)}<span class="sort-indicator"></span></th>'
         )
@@ -94,7 +92,7 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame) -> str:
         for col in columns:
             value = row[col]
             group = group_map.get(col)
-            style = heatmap_style(value, group=group)
+            style = heatmap_style(value, group=group, difference_mode=difference_mode)
             align_class = "text-left" if col in ("资产名称", "资产分类") else "text-center"
             sort_value = "" if pd.isna(value) else (str(value) if isinstance(value, str) else f"{float(value):.10f}")
             cells.append(
@@ -283,6 +281,33 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame) -> str:
     """
 
 
+def render_snapshot_block(result, title: str, description: str, difference_mode: bool = False) -> None:
+    st.subheader(title)
+    st.caption(description)
+
+    display_table = build_display_table(result.table)
+
+    summary_col1, summary_col2, summary_col3 = st.columns([1, 1, 3])
+    summary_col1.metric("资产数量", f"{len(display_table):,}")
+    summary_col2.metric("快照日期", result.snapshot_date.strftime("%Y-%m-%d"))
+    summary_col3.markdown(
+        """
+        <div class="info-card">
+            <div class="info-card-title">信号说明</div>
+            <div class="info-card-body">
+                <div><b>趋势</b>：<code>1</code> 偏多，<code>-1</code> 偏空</div>
+                <div><b>反转</b>：<code>1</code> 更偏抄底，<code>-1</code> 更偏回落</div>
+                <div><b>波动</b>：常规看板中 <code>0</code> 低波动、<code>1</code> 高波动；差值看板中为两日期之差</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+    components.html(build_sortable_html_table(display_table, difference_mode=difference_mode), height=980, scrolling=True)
+
+
 st.markdown(
     """
     <style>
@@ -333,42 +358,118 @@ st.markdown(
 )
 
 st.title(APP_NAME)
-st.caption("面向组合经理与研究员的多资产单资产信号看板")
-
-toolbar_left, toolbar_right = st.columns([5, 1])
-with toolbar_left:
-    st.caption("默认按资产分类排序；点击任意具体信号列标题可重新排序。")
-with toolbar_right:
-    if st.button("刷新数据库", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+st.caption("默认显示最新可用结果；开启日历后可查询指定历史日期。若当天没有完整结果，会显示 No data。")
 
 try:
-    with st.spinner("正在连接数据库并计算最新信号..."):
-        result = get_snapshot()
+    with st.spinner("正在连接数据库并加载历史数据…"):
+        raw_df = get_price_history_data()
 except Exception as exc:
     st.error(f"数据加载失败：{exc}")
     st.stop()
 
-display_table = build_display_table(result.table)
+if raw_df.empty:
+    st.info("No data")
+    st.stop()
 
-summary_col1, summary_col2, summary_col3 = st.columns([1, 1, 3])
-summary_col1.metric("资产数量", f"{len(display_table):,}")
-summary_col2.metric("快照日期", result.snapshot_date.strftime("%Y-%m-%d"))
-summary_col3.markdown(
-    """
-    <div class="info-card">
-        <div class="info-card-title">信号组说明</div>
-        <div class="info-card-body">
-            <div><b>趋势</b>：<code>1</code> 最强做多，<code>-1</code> 最强做空</div>
-            <div><b>反转</b>：<code>1</code> 跌幅最深、偏向抄底，<code>-1</code> 涨幅过大、偏向做空</div>
-            <div><b>波动</b>：<code>0</code> 近期波动低位，<code>1</code> 近期波动高位</div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+available_dates = get_available_snapshot_dates(raw_df)
+if available_dates.empty:
+    st.info("No data")
+    st.stop()
 
-st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+min_calendar_date = raw_df["date"].min().date()
+max_calendar_date = raw_df["date"].max().date()
+latest_available_date = available_dates.max().date()
+if len(available_dates) > 1:
+    default_compare_older = available_dates[-2].date()
+else:
+    default_compare_older = latest_available_date
 
-components.html(build_sortable_html_table(display_table), height=980, scrolling=True)
+refresh_col, _ = st.columns([1, 5])
+with refresh_col:
+    if st.button("Refresh", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+single_tab, range_tab = st.tabs(["单日期信号看板", "区间范围信号趋势"])
+
+with single_tab:
+    control_col1, control_col2 = st.columns([1.3, 1.4])
+    with control_col1:
+        use_historical_date = st.toggle("Use calendar date", value=False)
+    with control_col2:
+        selected_main_date = st.date_input(
+            "Snapshot date",
+            value=latest_available_date,
+            min_value=min_calendar_date,
+            max_value=max_calendar_date,
+            disabled=not use_historical_date,
+            key="main_snapshot_date",
+        )
+
+    if use_historical_date:
+        with st.spinner("正在计算指定日期快照…"):
+            main_result = compute_snapshot(raw_df, as_of_date=selected_main_date, exact_match=True)
+    else:
+        with st.spinner("正在计算最新快照…"):
+            main_result = compute_snapshot(raw_df)
+
+    if main_result is None:
+        st.info("No data")
+    else:
+        description = (
+            f"当前展示日期：{main_result.snapshot_date.strftime('%Y-%m-%d')}"
+            if not use_historical_date
+            else f"所选日期：{selected_main_date.strftime('%Y-%m-%d')}"
+        )
+        render_snapshot_block(main_result, "单日期信号看板", description)
+
+with range_tab:
+    st.caption("选择任意两个日期，返回 later minus older 的结果；如果任一日期没有完整结果，则显示 No data。")
+
+    diff_col1, diff_col2 = st.columns(2)
+    with diff_col1:
+        diff_date_a = st.date_input(
+            "Date A",
+            value=default_compare_older,
+            min_value=min_calendar_date,
+            max_value=max_calendar_date,
+            key="diff_date_a",
+        )
+    with diff_col2:
+        diff_date_b = st.date_input(
+            "Date B",
+            value=latest_available_date,
+            min_value=min_calendar_date,
+            max_value=max_calendar_date,
+            key="diff_date_b",
+        )
+
+    with st.spinner("正在计算双日期差值…"):
+        diff_result_a = compute_snapshot(raw_df, as_of_date=diff_date_a, exact_match=True)
+        diff_result_b = compute_snapshot(raw_df, as_of_date=diff_date_b, exact_match=True)
+
+    if diff_result_a is None or diff_result_b is None:
+        st.info("No data")
+    else:
+        older_result, later_result = sorted(
+            [diff_result_a, diff_result_b],
+            key=lambda item: item.snapshot_date,
+        )
+        diff_table = later_result.table.subtract(older_result.table)
+        diff_table.index.name = older_result.table.index.name
+
+        class DifferenceResult:
+            def __init__(self, snapshot_date, table):
+                self.snapshot_date = snapshot_date
+                self.table = table
+
+        diff_display_result = DifferenceResult(snapshot_date=later_result.snapshot_date, table=diff_table)
+        render_snapshot_block(
+            diff_display_result,
+            "区间范围信号趋势",
+            (
+                f"Later: {later_result.snapshot_date.strftime('%Y-%m-%d')} | "
+                f"Older: {older_result.snapshot_date.strftime('%Y-%m-%d')} | Formula: later - older"
+            ),
+            difference_mode=True,
+        )
