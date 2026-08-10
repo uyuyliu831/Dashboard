@@ -231,11 +231,11 @@ def compute_snapshot(
 
     for label, slow_window in MOMCO_WINDOWS.items():
         signal = prices.apply(lambda col: momco(col, fast=5, slow=slow_window, window=slow_window))
-        table_parts[("趋势", label)] = scale_minus1_to_1(signal.loc[snapshot_date], cap=2.0)
+        table_parts[("短期趋势", label)] = scale_minus1_to_1(signal.loc[snapshot_date], cap=2.0)
 
     for label, window in SKNS_WINDOWS.items():
         raw_signal = -log_returns.loc[:snapshot_date].apply(lambda col: reg_skewness(col.tail(window)))
-        table_parts[("反转", label)] = scale_minus1_to_1(raw_signal, cap=3.0)
+        table_parts[("长期反转", label)] = scale_minus1_to_1(raw_signal, cap=3.0)
 
     for label, (vol_window, z_window) in VOL_CONFIG.items():
         rolling_vol = simple_returns.rolling(vol_window).std()
@@ -264,12 +264,12 @@ def heatmap_style(value: object, group: str | None = None, difference_mode: bool
     blue = (157, 184, 232)
 
     if difference_mode:
-        caps = {"趋势": 2.0, "反转": 2.0, "波动": 1.0}
+        caps = {"短期趋势": 2.0, "长期反转": 2.0, "波动": 1.0}
         cap = caps.get(group)
         if cap is None:
             return ""
         normalized = float(np.clip((numeric / cap + 1) / 2, 0, 1))
-    elif group in ("趋势", "反转"):
+    elif group in ("短期趋势", "长期反转"):
         normalized = float(np.clip((numeric + 1) / 2, 0, 1))
     elif group == "波动":
         normalized = float(np.clip(numeric, 0, 1))

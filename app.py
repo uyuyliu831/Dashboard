@@ -60,17 +60,17 @@ def build_sortable_html_table(snapshot_table: pd.DataFrame, difference_mode: boo
     group_map = {
         "资产名称": "",
         "资产分类": "",
-        "趋势-1个月": "趋势",
-        "趋势-3个月": "趋势",
-        "趋势-6个月": "趋势",
-        "反转-6个月": "反转",
-        "反转-1年": "反转",
-        "反转-2年": "反转",
+        "短期趋势-1个月": "短期趋势",
+        "短期趋势-3个月": "短期趋势",
+        "短期趋势-6个月": "短期趋势",
+        "长期反转-6个月": "长期反转",
+        "长期反转-1年": "长期反转",
+        "长期反转-2年": "长期反转",
         "波动-短期波动率": "波动",
         "波动-中期波动率": "波动",
     }
 
-    group_spans = [("资产信息", 2), ("趋势", 3), ("反转", 3), ("波动", 2)]
+    group_spans = [("资产信息", 2), ("短期趋势", 3), ("长期反转", 3), ("波动", 2)]
     top_header = "".join(
         f'<th class="group-header" colspan="{span}">{label}</th>' for label, span in group_spans
     )
@@ -295,8 +295,8 @@ def render_snapshot_block(result, title: str, description: str, difference_mode:
         <div class="info-card">
             <div class="info-card-title">信号说明</div>
             <div class="info-card-body">
-                <div><b>趋势</b>：<code>1</code> 偏多，<code>-1</code> 偏空</div>
-                <div><b>反转</b>：<code>1</code> 更偏抄底，<code>-1</code> 更偏回落</div>
+                <div><b>短期趋势</b>：<code>1</code> 偏多，<code>-1</code> 偏空</div>
+                <div><b>长期反转</b>：<code>1</code> 更偏抄底，<code>-1</code> 更偏回落</div>
                 <div><b>波动</b>：常规看板中 <code>0</code> 低波动、<code>1</code> 高波动；差值看板中为两日期之差</div>
             </div>
         </div>
