@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import html
+import hmac
+import os
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+from streamlit.errors import StreamlitSecretNotFoundError
 
 from signal_utils import (
     APP_NAME,
@@ -18,6 +21,47 @@ from signal_utils import (
 
 
 st.set_page_config(page_title=APP_NAME, layout="wide")
+
+
+def get_app_password() -> str | None:
+    try:
+        secret_value = st.secrets.get("APP_PASSWORD")
+        if secret_value:
+            return str(secret_value)
+    except StreamlitSecretNotFoundError:
+        pass
+
+    env_value = os.getenv("APP_PASSWORD")
+    if env_value:
+        return env_value
+
+    return None
+
+
+def check_password() -> bool:
+    app_password = get_app_password()
+    if not app_password:
+        st.error("未配置访问密码，请设置 Streamlit secret 或环境变量 APP_PASSWORD。")
+        return False
+
+    def password_entered() -> None:
+        entered_password = st.session_state.get("password", "")
+        st.session_state["password_correct"] = hmac.compare_digest(entered_password, app_password)
+        st.session_state["password"] = ""
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.title(APP_NAME)
+    st.subheader("访问验证")
+    st.text_input("请输入访问密码", type="password", on_change=password_entered, key="password")
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("密码错误")
+    return False
+
+
+if not check_password():
+    st.stop()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -378,9 +422,9 @@ if available_dates.empty:
     st.info("No data")
     st.stop()
 
-min_calendar_date = raw_df["date"].min().date()
-max_calendar_date = raw_df["date"].max().date()
-latest_available_date = available_dates.max().date()
+min_calendar_date = available_dates.min().date()
+max_calendar_date = available_dates.max().date()
+latest_available_date = max_calendar_date
 if len(available_dates) > 1:
     default_compare_older = available_dates[-2].date()
 else:
